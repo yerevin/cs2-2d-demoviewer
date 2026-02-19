@@ -9,10 +9,11 @@ A high-performance web application designed for deep analysis and visualization 
 
 ![CS2 2D Demo Viewer Preview](example.png)
 
-<video controls width="800" poster="example.png">
-  <source src="example.mp4" type="video/mp4">
-  Your browser does not support the <code>video</code> element — download the demo preview: [example.mp4](example.mp4)
-</video>
+
+
+https://github.com/user-attachments/assets/cfdc6352-dab7-48c6-9e15-86b7a52355e7
+
+
 
 ## 🚀 Enjoy!
 
