@@ -1,0 +1,8 @@
+{
+  "mapName": "de_inferno",
+  "radarImage": "de_inferno_radar.png",
+  "pos_x": -2087,
+  "pos_y": 3870,
+  "scale": 4.9,
+  "levels": [{ "id": "main", "min_z": -1000, "max_z": 1000 }]
+}

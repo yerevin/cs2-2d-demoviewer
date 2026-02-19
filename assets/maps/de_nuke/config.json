@@ -1,0 +1,11 @@
+{
+  "mapName": "de_nuke",
+  "radarImage": "de_nuke_radar.png",
+  "pos_x": -3453,
+  "pos_y": 2887,
+  "scale": 7.0,
+  "levels": [
+    { "id": "upper", "min_z": -400, "max_z": 2000 },
+    { "id": "lower", "min_z": -1500, "max_z": -401 }
+  ]
+}

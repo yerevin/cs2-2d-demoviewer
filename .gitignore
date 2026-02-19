@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+bin/
+.env
+.env.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+out/
+*.dmg
+*.exe
+*.AppImage
+demos/
+cs2parser
+public/parser/

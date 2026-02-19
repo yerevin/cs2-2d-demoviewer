@@ -1,0 +1,8 @@
+{
+  "mapName": "de_dust2",
+  "radarImage": "de_dust2_radar.png",
+  "pos_x": -2476,
+  "pos_y": 3239,
+  "scale": 4.4,
+  "levels": [{ "id": "main", "min_z": -1000, "max_z": 1000 }]
+}

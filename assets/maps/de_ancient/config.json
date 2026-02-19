@@ -1,0 +1,15 @@
+{
+  "mapName": "de_ancient",
+  "radarImage": "de_ancient_radar.png",
+  "pos_x": -2953,
+  "pos_y": 2164,
+  "scale": 5.0,
+  "zoom": 1.1,
+  "levels": [
+    {
+      "id": "main",
+      "min_z": -500,
+      "max_z": 2000
+    }
+  ]
+}

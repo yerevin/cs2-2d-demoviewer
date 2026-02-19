@@ -1,0 +1,15 @@
+{
+  "mapName": "de_mirage",
+  "radarImage": "de_mirage_radar.png",
+  "pos_x": -3230,
+  "pos_y": 1713,
+  "scale": 5.0,
+  "zoom": 1.1,
+  "levels": [
+    {
+      "id": "main",
+      "min_z": -500,
+      "max_z": 3000
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "mapName": "de_overpass",
+  "radarImage": "de_overpass_radar.png",
+  "pos_x": -4831,
+  "pos_y": 1781,
+  "scale": 5.2,
+  "zoom": 5.22,
+  "levels": [
+    {
+      "id": "main",
+      "min_z": -500,
+      "max_z": 3000
+    }
+  ]
+}

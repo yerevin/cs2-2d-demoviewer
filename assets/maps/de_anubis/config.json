@@ -1,0 +1,15 @@
+{
+  "mapName": "de_anubis",
+  "radarImage": "de_anubis_radar.png",
+  "pos_x": -2796,
+  "pos_y": 3328,
+  "scale": 5.22,
+  "zoom": 1.1,
+  "levels": [
+    {
+      "id": "main",
+      "min_z": -500,
+      "max_z": 2000
+    }
+  ]
+}
