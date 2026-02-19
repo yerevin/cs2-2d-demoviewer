@@ -1,4 +1,4 @@
-# 🎮 CS2 2D Demo Viewer
+# 🎮 [CS2 2D Demo Viewer](https://yerevin.github.io/cs2-2d-demoviewer/)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
@@ -14,10 +14,11 @@ A high-performance web application designed for deep analysis and visualization 
   Your browser does not support the <code>video</code> element — download the demo preview: [example.mp4](example.mp4)
 </video>
 
-## 🚀 Download from releases page
+## 🚀 Enjoy!
 
-Nuke is not supported yet
-Speed of parsing demos is depending on your PC specs
+- [Click here to open](https://yerevin.github.io/cs2-2d-demoviewer/)
+- Nuke is not supported yet
+- Speed of parsing demos is depending on your PC specs
 
 ## ✨ Key Features
 
