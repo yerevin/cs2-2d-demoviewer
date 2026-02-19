@@ -35,6 +35,8 @@ https://github.com/user-attachments/assets/cfdc6352-dab7-48c6-9e15-86b7a52355e7
   - **Freeze-Time Skipping**: Jump directly to the action at the start of every round.
 - **🗺️ Multi-Map Support**: Optimized configurations for all active duty maps (_Dust2, Mirage, Inferno, Ancient, Anubis, Overpass_).
 - **🌗 Esports Aesthetic**: A dark, high-contrast UI designed for professional analysis.
+- **🧩 Faceit Chrome Extension Bridge**: Optional extension injects a **View 2D Demo** button next to **Watch demo** and opens the viewer with archive URL auto-loading.
+- **📦 Archive Ingestion**: Viewer can download and parse `.zip`, `.gz`, or raw `.dem` input from URL (including extension-proxied downloads when direct CORS fetch is blocked).
 
 ## 🛠️ Tech Stack
 
@@ -80,6 +82,42 @@ npm run dev
 ```
 
 This starts the Webpack dev server with hot-reloading enabled.
+
+## 🧩 Faceit Extension (optional)
+
+This repo includes an unpacked Chrome extension in:
+
+- `extensions/faceit-demo-bridge`
+
+### What it does
+
+1. Detects `Watch demo` in Faceit match rooms.
+2. Adds `View 2D Demo` next to it.
+3. Resolves final archive URL and opens viewer as:
+   - `...?demoArchiveUrl=<encoded-url>`
+4. Viewer downloads archive, extracts `.dem`, and parses automatically.
+5. If direct browser fetch is blocked by CORS, viewer falls back to extension bridge proxy download.
+
+### Install extension
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select `extensions/faceit-demo-bridge`
+
+### Optional local viewer override
+
+The extension defaults to GitHub Pages viewer URL. To route button clicks to local dev viewer:
+
+```js
+chrome.storage.sync.set({ viewerUrl: "http://localhost:3000/" });
+```
+
+### Security model
+
+- Extension only accepts `http/https` URLs.
+- Cross-origin download is performed by extension background service worker using explicit host permissions.
+- Downloaded archive bytes are cached in-memory temporarily and cleaned after transfer/TTL.
 
 ## 📦 Building for Production
 
