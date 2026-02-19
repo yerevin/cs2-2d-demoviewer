@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "CS2 2D Demo Viewer Faceit Bridge",
+  "description": "Adds a View 2D Demo button in Faceit match rooms and securely proxies demo archive downloads to the CS2 2D Demo Viewer.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "114",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.faceit.com/*",
+    "https://*.faceit.com/*",
+    "https://*.faceit-cdn.net/*",
+    "https://*.cloudfront.net/*",
+    "https://*.backblazeb2.com/*",
+    "https://yerevin.github.io/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.faceit.com/*"],
+      "js": ["faceitHook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.faceit.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://yerevin.github.io/*", "http://localhost:3000/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

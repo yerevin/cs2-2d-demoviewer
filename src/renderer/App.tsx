@@ -6,12 +6,15 @@ import ScoresHeader from "./components/ScoresHeader";
 import RoundTimeline from "./components/RoundTimeline";
 import NotesPanel from "./components/NotesPanel";
 import { parseDemoWithWasm } from "./wasmParser";
+import { loadDemoFromArchiveUrl } from "./demoLoader";
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [remoteSourceUrl, setRemoteSourceUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const remoteLoadKeyRef = useRef<string | null>(null);
 
   // Playback State
   const [currentTick, setCurrentTick] = useState(0);
@@ -145,6 +148,7 @@ const App: React.FC = () => {
     setError(null);
     setCurrentTick(0);
     setIsPlaying(false);
+    setRemoteSourceUrl(null);
 
     try {
       const result = await parseDemoWithWasm(file);
@@ -152,6 +156,24 @@ const App: React.FC = () => {
     } catch (err: any) {
       setError(err.toString());
       console.error("Error parsing demo:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFromArchiveUrl = async (archiveUrl: string) => {
+    setLoading(true);
+    setError(null);
+    setCurrentTick(0);
+    setIsPlaying(false);
+
+    try {
+      const result = await loadDemoFromArchiveUrl(archiveUrl);
+      setData({ ...result.parsed, file_path: result.fileName });
+      setRemoteSourceUrl(result.sourceUrl || archiveUrl);
+    } catch (err: any) {
+      setError(err?.toString?.() || "Failed to load remote demo archive");
+      console.error("Error loading remote demo archive:", err);
     } finally {
       setLoading(false);
     }
@@ -167,7 +189,27 @@ const App: React.FC = () => {
     setIsPlaying(false);
     setSelectedPlayerId(null);
     setNotes({});
+    setRemoteSourceUrl(null);
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("demoArchiveUrl")) {
+      params.delete("demoArchiveUrl");
+      const next = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname;
+      window.history.replaceState({}, "", next);
+    }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const archiveUrl = params.get("demoArchiveUrl");
+    if (!archiveUrl) return;
+    if (remoteLoadKeyRef.current === archiveUrl) return;
+
+    remoteLoadKeyRef.current = archiveUrl;
+    loadFromArchiveUrl(archiveUrl);
+  }, []);
 
   // Memoize current frame
   const currentFrame = useMemo(() => {
@@ -206,6 +248,23 @@ const App: React.FC = () => {
           onChange={handleFileChange}
           style={{ display: "none" }}
         />
+        {remoteSourceUrl && (
+          <div
+            style={{
+              borderTop: "1px solid var(--border-color)",
+              padding: "6px 30px",
+              color: "var(--text-secondary)",
+              fontSize: "0.65rem",
+              letterSpacing: "1px",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={remoteSourceUrl}
+          >
+            SOURCE URL: {remoteSourceUrl}
+          </div>
+        )}
       </header>
 
       <aside
