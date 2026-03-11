@@ -5,6 +5,7 @@ declare global {
       run(instance: WebAssembly.Instance): void;
     };
     parseDemoWasm?: (demoBytes: Uint8Array) => string | { error: string };
+    extractVoiceOgg?: (steamId: number, startTick: number, endTick: number) => Uint8Array | { error: string };
   }
 }
 
@@ -75,4 +76,26 @@ export const parseDemoWithWasm = async (file: File) => {
   }
 
   return JSON.parse(result);
+};
+
+export const extractVoiceOgg = async (
+  steamId: number,
+  startTick: number,
+  endTick: number,
+): Promise<Uint8Array> => {
+  await loadWasmModule();
+
+  if (!window.extractVoiceOgg) {
+    throw new Error("Voice extraction unavailable");
+  }
+
+  const result = window.extractVoiceOgg(steamId, startTick, endTick);
+
+  if (result instanceof Uint8Array) {
+    return result;
+  }
+
+  throw new Error(
+    (result as { error: string }).error || "Failed to extract voice data",
+  );
 };

@@ -6,6 +6,7 @@ import ScoresHeader from "./components/ScoresHeader";
 import RoundTimeline from "./components/RoundTimeline";
 import NotesPanel from "./components/NotesPanel";
 import ChatPanel from "./components/ChatPanel";
+import VoiceDownloadPanel from "./components/VoiceDownloadPanel";
 import { parseDemoWithWasm } from "./wasmParser";
 import { loadDemoFromArchiveUrl } from "./demoLoader";
 
@@ -32,6 +33,9 @@ const App: React.FC = () => {
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [chatFilterPlayerId, setChatFilterPlayerId] = useState<number | null>(null);
   const [chatFilterPlayerName, setChatFilterPlayerName] = useState<string | null>(null);
+
+  // Voice panel state
+  const [showVoicePanel, setShowVoicePanel] = useState(false);
 
   // Load notes from localStorage
   useEffect(() => {
@@ -211,6 +215,7 @@ const App: React.FC = () => {
     setShowChatPanel(false);
     setChatFilterPlayerId(null);
     setChatFilterPlayerName(null);
+    setShowVoicePanel(false);
 
     const params = new URLSearchParams(window.location.search);
     if (params.has("demoArchiveUrl")) {
@@ -322,6 +327,38 @@ const App: React.FC = () => {
               }}
             >
               SHOW MATCH CHAT
+            </button>
+          </div>
+        )}
+
+        {/* Voice Download Panel */}
+        {data && showVoicePanel && (
+          <VoiceDownloadPanel
+            voicePlayers={data.voice_players || []}
+            rounds={roundsForView}
+            onClose={() => setShowVoicePanel(false)}
+          />
+        )}
+
+        {/* Voice toggle button when panel is closed */}
+        {data && !showVoicePanel && (
+          <div
+            style={{
+              padding: "10px 15px",
+              borderBottom: "1px solid var(--border-color)",
+            }}
+          >
+            <button
+              onClick={() => setShowVoicePanel(true)}
+              className="small-btn"
+              style={{
+                fontSize: "0.6rem",
+                padding: "4px 8px",
+                width: "100%",
+                letterSpacing: "1px",
+              }}
+            >
+              VOICE CHAT DOWNLOADS
             </button>
           </div>
         )}

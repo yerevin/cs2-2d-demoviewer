@@ -115,7 +115,8 @@ type MatchData struct {
 	CTScore          int         `json:"ct_score"`         // Final CT Score
 	TScore           int         `json:"t_score"`          // Final T Score
 	MatchStartTick   int         `json:"match_start_tick"` // Tick when match officially started (after knife/restarts)
-	ChatMessages     []ChatMessage `json:"chat_messages"`
+	ChatMessages     []ChatMessage   `json:"chat_messages"`
+	VoicePlayers     []VoicePlayerInfo `json:"voice_players"`
 }
 
 type ChatMessage struct {
@@ -125,6 +126,27 @@ type ChatMessage struct {
 	Text       string `json:"text"`
 	IsTeam     bool   `json:"is_team"`
 }
+
+// Voice data types
+type VoiceSegmentData struct {
+	Tick      int
+	Timestamp float64 // seconds
+	Data      []byte  // raw Opus frame data
+}
+
+type VoicePlayerInfo struct {
+	SteamID  uint64 `json:"steam_id"`
+	Name     string `json:"name"`
+	Segments int    `json:"segments"`
+	Format   string `json:"format"` // "opus" or "steam"
+}
+
+// Package-level voice data storage (for WASM access after parsing)
+var StoredVoiceData map[uint64][]VoiceSegmentData
+var StoredVoiceFormat string
+var StoredVoiceSampleRate uint32
+var StoredVoicePlayerNames map[uint64]string
+var StoredRounds []RoundData
 
 func ParseDemo(r io.Reader) ([]byte, error) {
 	p := dem.NewParser(r)
@@ -224,6 +246,53 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 			ke.AssisterID = e.Assister.SteamID64
 		}
 		killEvents = append(killEvents, ke)
+	})
+
+	// Voice data collection
+	voiceSegments := make(map[uint64][]VoiceSegmentData)
+	voicePlayerNames := make(map[uint64]string)
+	voiceFormat := ""
+	voiceSampleRate := uint32(48000)
+
+	p.RegisterNetMessageHandler(func(m *msg.CSVCMsg_VoiceData) {
+		audio := m.GetAudio()
+		if audio == nil || len(audio.GetVoiceData()) == 0 {
+			return
+		}
+
+		format := audio.GetFormat()
+		if format == msg.VoiceDataFormatT_VOICEDATA_FORMAT_OPUS {
+			voiceFormat = "opus"
+		} else if format == msg.VoiceDataFormatT_VOICEDATA_FORMAT_STEAM {
+			voiceFormat = "steam"
+		} else {
+			return // unsupported format
+		}
+
+		if audio.GetSampleRate() > 0 {
+			voiceSampleRate = audio.GetSampleRate()
+		}
+
+		steamID := m.GetXuid()
+		if steamID == 0 {
+			return
+		}
+
+		// Resolve player name
+		if _, ok := voicePlayerNames[steamID]; !ok {
+			for _, player := range p.GameState().Participants().All() {
+				if player.SteamID64 == steamID {
+					voicePlayerNames[steamID] = player.Name
+					break
+				}
+			}
+		}
+
+		voiceSegments[steamID] = append(voiceSegments[steamID], VoiceSegmentData{
+			Tick:      p.GameState().IngameTick(),
+			Timestamp: p.CurrentTime().Seconds(),
+			Data:      audio.GetVoiceData(),
+		})
 	})
 
 	p.RegisterEventHandler(func(e events.ChatMessage) {
@@ -580,6 +649,28 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 	originalTickRate := tickRate
 	frameTickRate := tickRate / float64(tickSkip)
 
+	// Build voice player info for JSON output
+	var voicePlayers []VoicePlayerInfo
+	for steamID, segs := range voiceSegments {
+		name := voicePlayerNames[steamID]
+		if name == "" {
+			name = fmt.Sprintf("%d", steamID)
+		}
+		voicePlayers = append(voicePlayers, VoicePlayerInfo{
+			SteamID:  steamID,
+			Name:     name,
+			Segments: len(segs),
+			Format:   voiceFormat,
+		})
+	}
+
+	// Store voice data globally for WASM extraction
+	StoredVoiceData = voiceSegments
+	StoredVoiceFormat = voiceFormat
+	StoredVoiceSampleRate = voiceSampleRate
+	StoredVoicePlayerNames = voicePlayerNames
+	StoredRounds = rounds
+
 	matchData := MatchData{
 		MapName:          mapName,
 		TickRate:         frameTickRate,
@@ -591,6 +682,7 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 		TScore:           tScore,
 		MatchStartTick:   matchStartTick,
 		ChatMessages:     chatMessages,
+		VoicePlayers:     voicePlayers,
 	}
 
 	jsonData, err := json.Marshal(matchData)
