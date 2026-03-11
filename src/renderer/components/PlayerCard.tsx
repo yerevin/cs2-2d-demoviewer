@@ -20,6 +20,7 @@ interface PlayerCardProps {
   showNicknames: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  onViewChat?: () => void;
 }
 
 const PlayerCard: React.FC<PlayerCardProps> = ({
@@ -41,6 +42,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
   showNicknames,
   isSelected,
   onSelect,
+  onViewChat,
 }) => {
   const teamColor = team === "CT" ? "var(--accent-ct)" : "var(--accent-t)";
   const hpColor =
@@ -249,7 +251,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
               fontSize: "0.6rem",
               color: isDead ? "var(--text-secondary)" : "var(--text-primary)",
               textTransform: "uppercase",
-              maxWidth: "120px", // Always show names in the list
+              maxWidth: "110px",
               overflow: "hidden",
               transition: "max-width 0.3s ease",
               whiteSpace: "nowrap",
@@ -258,6 +260,29 @@ const PlayerCard: React.FC<PlayerCardProps> = ({
             {name}
             {hasBomb && <span style={{ fontSize: "0.65rem" }}>💣</span>}
           </span>
+
+          {onViewChat && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewChat();
+              }}
+              title={`View chat for ${name}`}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-secondary)",
+                fontSize: "0.5rem",
+                padding: "1px 4px",
+                borderRadius: "2px",
+                cursor: "pointer",
+                lineHeight: 1,
+                flexShrink: 0,
+              }}
+            >
+              CHAT
+            </button>
+          )}
 
           {renderActiveWeapon()}
         </div>

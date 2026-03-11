@@ -27,6 +27,7 @@ interface PlayerSidebarProps {
   selectedPlayerId: number | null;
   onSelectPlayer: (id: number | null) => void;
   compactMode?: boolean;
+  onViewChat?: (playerId: number, playerName: string) => void;
 }
 
 const PlayerSidebar: React.FC<PlayerSidebarProps> = ({
@@ -36,6 +37,7 @@ const PlayerSidebar: React.FC<PlayerSidebarProps> = ({
   selectedPlayerId,
   onSelectPlayer,
   compactMode = false,
+  onViewChat,
 }) => {
   const teamLabel = team === "CT" ? "COUNTER-TERRORISTS" : "TERRORISTS";
   const teamColor = team === "CT" ? "var(--accent-ct)" : "var(--accent-t)";
@@ -95,6 +97,11 @@ const PlayerSidebar: React.FC<PlayerSidebarProps> = ({
             isSelected={selectedPlayerId === player.id}
             onSelect={() =>
               onSelectPlayer(selectedPlayerId === player.id ? null : player.id)
+            }
+            onViewChat={
+              onViewChat
+                ? () => onViewChat(player.id, player.name)
+                : undefined
             }
           />
           );

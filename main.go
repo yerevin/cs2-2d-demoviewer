@@ -115,6 +115,15 @@ type MatchData struct {
 	CTScore          int         `json:"ct_score"`         // Final CT Score
 	TScore           int         `json:"t_score"`          // Final T Score
 	MatchStartTick   int         `json:"match_start_tick"` // Tick when match officially started (after knife/restarts)
+	ChatMessages     []ChatMessage `json:"chat_messages"`
+}
+
+type ChatMessage struct {
+	Tick       int    `json:"tick"`
+	SenderID   uint64 `json:"sender_id"`
+	SenderName string `json:"sender_name"`
+	Text       string `json:"text"`
+	IsTeam     bool   `json:"is_team"`
 }
 
 func ParseDemo(r io.Reader) ([]byte, error) {
@@ -129,6 +138,7 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 	frames := []FrameData{}
 	rounds := []RoundData{}
 	killEvents := []KillEvent{}
+	chatMessages := []ChatMessage{}
 
 	ctScore := 0
 	tScore := 0
@@ -214,6 +224,23 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 			ke.AssisterID = e.Assister.SteamID64
 		}
 		killEvents = append(killEvents, ke)
+	})
+
+	p.RegisterEventHandler(func(e events.ChatMessage) {
+		senderID := uint64(0)
+		senderName := "Console"
+		if e.Sender != nil {
+			senderID = e.Sender.SteamID64
+			senderName = e.Sender.Name
+		}
+
+		chatMessages = append(chatMessages, ChatMessage{
+			Tick:       p.GameState().IngameTick(),
+			SenderID:   senderID,
+			SenderName: senderName,
+			Text:       e.Text,
+			IsTeam:     e.IsChatAll == false,
+		})
 	})
 
 	// Tracking utilities with unique IDs
@@ -563,6 +590,7 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 		CTScore:          ctScore,
 		TScore:           tScore,
 		MatchStartTick:   matchStartTick,
+		ChatMessages:     chatMessages,
 	}
 
 	jsonData, err := json.Marshal(matchData)

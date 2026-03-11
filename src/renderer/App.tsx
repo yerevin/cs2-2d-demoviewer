@@ -5,6 +5,7 @@ import ScoreboardHeader from "./components/ScoreboardHeader";
 import ScoresHeader from "./components/ScoresHeader";
 import RoundTimeline from "./components/RoundTimeline";
 import NotesPanel from "./components/NotesPanel";
+import ChatPanel from "./components/ChatPanel";
 import { parseDemoWithWasm } from "./wasmParser";
 import { loadDemoFromArchiveUrl } from "./demoLoader";
 
@@ -26,6 +27,11 @@ const App: React.FC = () => {
   const [showNicknames, setShowNicknames] = useState(true);
 
   const [notes, setNotes] = useState<Record<string, string>>({}); // round_num -> note
+
+  // Chat panel state
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [chatFilterPlayerId, setChatFilterPlayerId] = useState<number | null>(null);
+  const [chatFilterPlayerName, setChatFilterPlayerName] = useState<string | null>(null);
 
   // Load notes from localStorage
   useEffect(() => {
@@ -183,6 +189,18 @@ const App: React.FC = () => {
     fileInputRef.current?.click();
   };
 
+  const handleViewChat = (playerId: number, playerName: string) => {
+    setChatFilterPlayerId(playerId);
+    setChatFilterPlayerName(playerName);
+    setShowChatPanel(true);
+  };
+
+  const handleCloseChatPanel = () => {
+    setShowChatPanel(false);
+    setChatFilterPlayerId(null);
+    setChatFilterPlayerName(null);
+  };
+
   const handleReset = () => {
     setData(null);
     setCurrentTick(0);
@@ -190,6 +208,9 @@ const App: React.FC = () => {
     setSelectedPlayerId(null);
     setNotes({});
     setRemoteSourceUrl(null);
+    setShowChatPanel(false);
+    setChatFilterPlayerId(null);
+    setChatFilterPlayerName(null);
 
     const params = new URLSearchParams(window.location.search);
     if (params.has("demoArchiveUrl")) {
@@ -271,6 +292,40 @@ const App: React.FC = () => {
         className="left-sidebar-area"
         style={{ overflowY: "auto", display: "flex", flexDirection: "column" }}
       >
+        {/* Chat Panel */}
+        {data && showChatPanel && (
+          <ChatPanel
+            chatMessages={data.chat_messages || []}
+            rounds={roundsForView}
+            filterPlayerId={chatFilterPlayerId}
+            filterPlayerName={chatFilterPlayerName}
+            onClose={handleCloseChatPanel}
+          />
+        )}
+
+        {/* Chat toggle button when panel is closed */}
+        {data && !showChatPanel && (
+          <div
+            style={{
+              padding: "10px 15px",
+              borderBottom: "1px solid var(--border-color)",
+            }}
+          >
+            <button
+              onClick={() => setShowChatPanel(true)}
+              className="small-btn"
+              style={{
+                fontSize: "0.6rem",
+                padding: "4px 8px",
+                width: "100%",
+                letterSpacing: "1px",
+              }}
+            >
+              SHOW MATCH CHAT
+            </button>
+          </div>
+        )}
+
         {/* Notes Panel */}
         {data && (
           <NotesPanel
@@ -498,6 +553,7 @@ const App: React.FC = () => {
                   selectedPlayerId={selectedPlayerId}
                   onSelectPlayer={setSelectedPlayerId}
                   compactMode={true}
+                  onViewChat={handleViewChat}
                 />
               </div>
             </div>
@@ -516,6 +572,7 @@ const App: React.FC = () => {
                   selectedPlayerId={selectedPlayerId}
                   onSelectPlayer={setSelectedPlayerId}
                   compactMode={true}
+                  onViewChat={handleViewChat}
                 />
               </div>
             </div>
