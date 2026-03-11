@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { exportVoiceOggToMp4 } from "../mediaExport";
 import { extractVoiceOgg } from "../wasmParser";
 
 interface VoicePlayer {
@@ -19,6 +20,8 @@ interface VoiceDownloadPanelProps {
   onClose: () => void;
 }
 
+type DownloadFormat = "ogg" | "mp4";
+
 const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
   voicePlayers,
   rounds,
@@ -26,12 +29,25 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
 }) => {
   const [downloading, setDownloading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloadFormat, setDownloadFormat] =
+    useState<DownloadFormat>("mp4");
+
+  const saveBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const downloadVoice = async (
     player: VoicePlayer,
     roundNum: number | null,
   ) => {
-    const key = `${player.steam_id}_${roundNum ?? "all"}`;
+    const key = `${player.steam_id}_${roundNum ?? "all"}_${downloadFormat}`;
     setDownloading(key);
     setError(null);
 
@@ -53,18 +69,30 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
         startTick,
         endTick,
       );
-
-      const blob = new Blob([new Uint8Array(oggData)], { type: "audio/ogg" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const roundLabel =
         roundNum !== null ? `round${roundNum}` : "full_match";
-      a.download = `${player.name}_${roundLabel}.ogg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const safeName = player.name.replace(/[^a-z0-9-_]+/gi, "_");
+
+      if (downloadFormat === "mp4") {
+        const subtitle =
+          roundNum !== null
+            ? `Round ${roundNum} voice chat export`
+            : "Full match voice chat export";
+        const mp4Data = await exportVoiceOggToMp4(
+          oggData,
+          player.name,
+          subtitle,
+        );
+        saveBlob(
+          new Blob([new Uint8Array(mp4Data)], { type: "video/mp4" }),
+          `${safeName}_${roundLabel}.mp4`,
+        );
+      } else {
+        saveBlob(
+          new Blob([new Uint8Array(oggData)], { type: "audio/ogg" }),
+          `${safeName}_${roundLabel}.ogg`,
+        );
+      }
     } catch (err: any) {
       setError(err?.message || "Download failed");
     } finally {
@@ -163,13 +191,66 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
         >
           VOICE CHAT ({voicePlayers.length} PLAYERS)
         </h4>
-        <button
-          onClick={onClose}
-          className="small-btn"
-          style={{ fontSize: "0.6rem", padding: "2px 6px" }}
-        >
-          CLOSE
-        </button>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "4px",
+              padding: "2px",
+              border: "1px solid var(--border-color)",
+              borderRadius: "3px",
+            }}
+          >
+            <button
+              onClick={() => setDownloadFormat("ogg")}
+              className="small-btn"
+              style={{
+                fontSize: "0.55rem",
+                padding: "2px 6px",
+                background:
+                  downloadFormat === "ogg" ? "var(--accent-t)" : "transparent",
+                color: downloadFormat === "ogg" ? "white" : undefined,
+              }}
+            >
+              OGG
+            </button>
+            <button
+              onClick={() => setDownloadFormat("mp4")}
+              className="small-btn"
+              style={{
+                fontSize: "0.55rem",
+                padding: "2px 6px",
+                background:
+                  downloadFormat === "mp4"
+                    ? "var(--accent-ct)"
+                    : "transparent",
+                color: downloadFormat === "mp4" ? "white" : undefined,
+              }}
+            >
+              MP4
+            </button>
+          </div>
+          <button
+            onClick={onClose}
+            className="small-btn"
+            style={{ fontSize: "0.6rem", padding: "2px 6px" }}
+          >
+            CLOSE
+          </button>
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: "6px 15px",
+          fontSize: "0.6rem",
+          color: "var(--text-secondary)",
+          borderBottom: "1px solid var(--border-color)",
+        }}
+      >
+        {downloadFormat === "mp4"
+          ? "MP4 export wraps the extracted voice in a small black video for upload-friendly playback."
+          : "OGG export keeps the original extracted voice container without re-encoding."}
       </div>
 
       {/* Error */}
@@ -201,6 +282,7 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
             player={player}
             roundNumbers={roundNumbers}
             downloading={downloading}
+            downloadFormat={downloadFormat}
             onDownload={downloadVoice}
           />
         ))}
@@ -213,6 +295,7 @@ interface VoicePlayerRowProps {
   player: VoicePlayer;
   roundNumbers: number[];
   downloading: string | null;
+  downloadFormat: DownloadFormat;
   onDownload: (player: VoicePlayer, roundNum: number | null) => void;
 }
 
@@ -220,11 +303,12 @@ const VoicePlayerRow: React.FC<VoicePlayerRowProps> = ({
   player,
   roundNumbers,
   downloading,
+  downloadFormat,
   onDownload,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const isDownloading = (roundNum: number | null) =>
-    downloading === `${player.steam_id}_${roundNum ?? "all"}`;
+    downloading === `${player.steam_id}_${roundNum ?? "all"}_${downloadFormat}`;
 
   return (
     <div
@@ -278,7 +362,9 @@ const VoicePlayerRow: React.FC<VoicePlayerRowProps> = ({
               opacity: isDownloading(null) ? 0.6 : 1,
             }}
           >
-            {isDownloading(null) ? "..." : "FULL"}
+            {isDownloading(null)
+              ? "..."
+              : `FULL ${downloadFormat.toUpperCase()}`}
           </button>
           <button
             onClick={() => setExpanded(!expanded)}
