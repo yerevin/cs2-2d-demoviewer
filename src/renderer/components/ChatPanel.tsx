@@ -4,6 +4,7 @@ interface ChatMessage {
   tick: number;
   sender_id: number;
   sender_name: string;
+  sender_team: string;
   text: string;
   is_team: boolean;
 }
@@ -21,8 +22,6 @@ interface ChatPanelProps {
   onClose: () => void;
 }
 
-type ChatScope = "all" | "public" | "team";
-
 const ChatPanel: React.FC<ChatPanelProps> = ({
   chatMessages,
   rounds,
@@ -31,11 +30,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   onClose,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [scope, setScope] = useState<ChatScope>("all");
 
-  // Determine which round a tick belongs to
   const getRoundForTick = (tick: number): number => {
-    let roundNum = 0; // pre-match
+    let roundNum = 0;
     for (const round of rounds) {
       if (tick >= round.tick) {
         roundNum = round.number;
@@ -46,42 +43,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     return roundNum;
   };
 
-  const playerMessages = useMemo(() => {
+  const messages = useMemo(() => {
     if (filterPlayerId == null) return chatMessages;
     return chatMessages.filter((m) => m.sender_id === filterPlayerId);
   }, [chatMessages, filterPlayerId]);
 
-  const filteredMessages = useMemo(() => {
-    if (scope === "team") {
-      return playerMessages.filter((message) => message.is_team);
-    }
-
-    if (scope === "public") {
-      return playerMessages.filter((message) => !message.is_team);
-    }
-
-    return playerMessages;
-  }, [playerMessages, scope]);
-
-  const scopeCounts = useMemo(
-    () => ({
-      all: playerMessages.length,
-      public: playerMessages.filter((message) => !message.is_team).length,
-      team: playerMessages.filter((message) => message.is_team).length,
-    }),
-    [playerMessages],
-  );
-
-  // Group messages by round
   const messagesByRound = useMemo(() => {
     const grouped: Record<number, ChatMessage[]> = {};
-    for (const msg of filteredMessages) {
+    for (const msg of messages) {
       const roundNum = getRoundForTick(msg.tick);
       if (!grouped[roundNum]) grouped[roundNum] = [];
       grouped[roundNum].push(msg);
     }
     return grouped;
-  }, [filteredMessages, rounds]);
+  }, [messages, rounds]);
 
   const sortedRoundNumbers = useMemo(
     () =>
@@ -91,28 +66,36 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     [messagesByRound],
   );
 
-  const handleCopy = async () => {
-    if (filteredMessages.length === 0) return;
+  const getPrefix = (msg: ChatMessage): { label: string; color: string } => {
+    if (!msg.is_team) {
+      return { label: "(ALL)", color: "var(--text-secondary)" };
+    }
+    if (msg.sender_team === "CT") {
+      return { label: "(CT)", color: "var(--accent-ct)" };
+    }
+    if (msg.sender_team === "T") {
+      return { label: "(T)", color: "var(--accent-t)" };
+    }
+    return { label: "(TEAM)", color: "var(--text-secondary)" };
+  };
 
-    const scopeLabel =
-      scope === "team"
-        ? "Team chat"
-        : scope === "public"
-          ? "Public chat"
-          : "Full chat";
+  const handleCopy = async () => {
+    if (messages.length === 0) return;
+
     const playerLabel = filterPlayerName
-      ? `${scopeLabel} log for ${filterPlayerName}`
-      : `${scopeLabel} log for full match`;
+      ? `Chat log for ${filterPlayerName}`
+      : "Chat log for full match";
 
     const lines: string[] = [playerLabel, ""];
 
     for (const roundNum of sortedRoundNumbers) {
-      const roundLabel =
-        roundNum <= 0 ? "Pre-match" : `Round ${roundNum}`;
+      const roundLabel = roundNum <= 0 ? "Pre-match" : `Round ${roundNum}`;
       lines.push(`--- ${roundLabel} ---`);
       for (const msg of messagesByRound[roundNum]) {
-        const chatType = msg.is_team ? "[TEAM]" : "[ALL]";
-        lines.push(`${chatType} ${msg.sender_name}: ${msg.text}`);
+        const prefix = msg.is_team
+          ? `(${msg.sender_team || "TEAM"})`
+          : "(ALL)";
+        lines.push(`${prefix} ${msg.sender_name}: ${msg.text}`);
       }
       lines.push("");
     }
@@ -172,45 +155,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             : "MATCH CHAT"}
         </h4>
         <div style={{ display: "flex", gap: "6px" }}>
-          <div style={{ display: "flex", gap: "4px" }}>
-            <button
-              onClick={() => setScope("all")}
-              className="small-btn"
-              style={{
-                fontSize: "0.55rem",
-                padding: "2px 6px",
-                background: scope === "all" ? "var(--accent-ct)" : "transparent",
-                color: scope === "all" ? "white" : undefined,
-              }}
-            >
-              ALL {scopeCounts.all}
-            </button>
-            <button
-              onClick={() => setScope("public")}
-              className="small-btn"
-              style={{
-                fontSize: "0.55rem",
-                padding: "2px 6px",
-                background: scope === "public" ? "var(--accent-ct)" : "transparent",
-                color: scope === "public" ? "white" : undefined,
-              }}
-            >
-              PUBLIC {scopeCounts.public}
-            </button>
-            <button
-              onClick={() => setScope("team")}
-              className="small-btn"
-              style={{
-                fontSize: "0.55rem",
-                padding: "2px 6px",
-                background: scope === "team" ? "var(--accent-t)" : "transparent",
-                color: scope === "team" ? "white" : undefined,
-              }}
-            >
-              TEAM {scopeCounts.team}
-            </button>
-          </div>
-          {filteredMessages.length > 0 && (
+          {messages.length > 0 && (
             <button
               onClick={handleCopy}
               className="small-btn"
@@ -229,22 +174,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
         </div>
       </div>
 
-      <div
-        style={{
-          padding: "6px 15px",
-          fontSize: "0.58rem",
-          color: "var(--text-secondary)",
-          borderBottom: "1px solid var(--border-color)",
-          letterSpacing: "0.8px",
-        }}
-      >
-        {scope === "team"
-          ? "Showing only team chat messages."
-          : scope === "public"
-            ? "Showing only public chat messages."
-            : "Showing all public and team chat messages."}
-      </div>
-
       {/* Messages */}
       <div
         style={{
@@ -254,7 +183,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           minHeight: 0,
         }}
       >
-        {filteredMessages.length === 0 ? (
+        {messages.length === 0 ? (
           <div
             style={{
               color: "var(--text-secondary)",
@@ -265,8 +194,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             }}
           >
             {filterPlayerName
-              ? `No ${scope === "team" ? "team " : scope === "public" ? "public " : ""}chat messages from ${filterPlayerName}`
-              : `No ${scope === "team" ? "team " : scope === "public" ? "public " : ""}chat messages in this demo`}
+              ? `No chat messages from ${filterPlayerName}`
+              : "No chat messages in this demo"}
           </div>
         ) : (
           sortedRoundNumbers.map((roundNum) => (
@@ -283,41 +212,42 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
               >
                 {roundNum <= 0 ? "PRE-MATCH" : `ROUND ${roundNum}`}
               </div>
-              {messagesByRound[roundNum].map((msg, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    fontSize: "0.7rem",
-                    lineHeight: "1.5",
-                    padding: "2px 0",
-                  }}
-                >
-                  <span
+              {messagesByRound[roundNum].map((msg, idx) => {
+                const prefix = getPrefix(msg);
+                return (
+                  <div
+                    key={idx}
                     style={{
-                      color: msg.is_team
-                        ? "var(--accent-t)"
-                        : "var(--accent-ct)",
-                      fontSize: "0.55rem",
-                      fontWeight: 700,
-                      marginRight: "4px",
+                      fontSize: "0.7rem",
+                      lineHeight: "1.5",
+                      padding: "2px 0",
                     }}
                   >
-                    {msg.is_team ? "TEAM CHAT" : "ALL CHAT"}
-                  </span>
-                  <span
-                    style={{
-                      color: "var(--text-primary)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {msg.sender_name}
-                  </span>
-                  <span style={{ color: "var(--text-secondary)" }}>: </span>
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    {msg.text}
-                  </span>
-                </div>
-              ))}
+                    <span
+                      style={{
+                        color: prefix.color,
+                        fontSize: "0.55rem",
+                        fontWeight: 700,
+                        marginRight: "4px",
+                      }}
+                    >
+                      {prefix.label}
+                    </span>
+                    <span
+                      style={{
+                        color: "var(--text-primary)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {msg.sender_name}
+                    </span>
+                    <span style={{ color: "var(--text-secondary)" }}>: </span>
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      {msg.text}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ))
         )}

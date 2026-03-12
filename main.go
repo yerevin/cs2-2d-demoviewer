@@ -124,6 +124,7 @@ type ChatMessage struct {
 	Tick       int    `json:"tick"`
 	SenderID   uint64 `json:"sender_id"`
 	SenderName string `json:"sender_name"`
+	SenderTeam string `json:"sender_team"`
 	Text       string `json:"text"`
 	IsTeam     bool   `json:"is_team"`
 }
@@ -321,9 +322,16 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 	p.RegisterEventHandler(func(e events.ChatMessage) {
 		senderID := uint64(0)
 		senderName := "Console"
+		senderTeam := ""
 		if e.Sender != nil {
 			senderID = e.Sender.SteamID64
 			senderName = e.Sender.Name
+			switch e.Sender.Team {
+			case common.TeamCounterTerrorists:
+				senderTeam = "CT"
+			case common.TeamTerrorists:
+				senderTeam = "T"
+			}
 		}
 
 		tick := p.GameState().IngameTick()
@@ -337,29 +345,32 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 			Tick:       tick,
 			SenderID:   senderID,
 			SenderName: senderName,
+			SenderTeam: senderTeam,
 			Text:       e.Text,
 			IsTeam:     !e.IsChatAll,
 		})
 	})
 
 	p.RegisterEventHandler(func(e events.SayText2) {
-		if !e.IsChat || len(e.Params) < 2 {
+		if len(e.Params) < 2 {
 			return
 		}
 
 		msgName := strings.TrimPrefix(e.MsgName, "#")
 
-		isTeamChat := false
-		switch {
-		case strings.Contains(msgName, "Chat_All"):
-			isTeamChat = false
-		case strings.Contains(msgName, "Chat_CT") ||
-			strings.Contains(msgName, "Chat_T_") ||
-			strings.HasSuffix(msgName, "Chat_T") ||
-			strings.Contains(msgName, "Chat_Spec"):
-			isTeamChat = true
-		default:
-			isTeamChat = false
+		// Only process recognisable chat message names
+		if !strings.Contains(msgName, "Cstrike_Chat") {
+			return
+		}
+
+		isTeamChat := !strings.Contains(msgName, "Chat_All")
+
+		// Derive sender team from the message name
+		senderTeam := ""
+		if strings.Contains(msgName, "_CT") {
+			senderTeam = "CT"
+		} else if strings.Contains(msgName, "_T_") || strings.HasSuffix(msgName, "_T") {
+			senderTeam = "T"
 		}
 
 		senderName := strings.TrimSpace(e.Params[0])
@@ -372,6 +383,15 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 		if player := resolvePlayerByName(senderName); player != nil {
 			senderID = player.SteamID64
 			senderName = player.Name
+			// If we couldn't derive team from msgName, get it from player state
+			if senderTeam == "" {
+				switch player.Team {
+				case common.TeamCounterTerrorists:
+					senderTeam = "CT"
+				case common.TeamTerrorists:
+					senderTeam = "T"
+				}
+			}
 		}
 
 		if senderName == "" {
@@ -389,6 +409,7 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 			Tick:       tick,
 			SenderID:   senderID,
 			SenderName: senderName,
+			SenderTeam: senderTeam,
 			Text:       messageText,
 			IsTeam:     isTeamChat,
 		})
