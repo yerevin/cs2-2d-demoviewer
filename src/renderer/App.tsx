@@ -7,11 +7,16 @@ import RoundTimeline from "./components/RoundTimeline";
 import NotesPanel from "./components/NotesPanel";
 import ChatPanel from "./components/ChatPanel";
 import VoiceDownloadPanel from "./components/VoiceDownloadPanel";
-import { parseDemoWithWasm } from "./wasmParser";
+import { parseDemoWithWasm, type ProgressUpdate } from "./wasmParser";
 import { loadDemoFromArchiveUrl } from "./demoLoader";
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<{
+    title: string;
+    detail: string;
+    progress: number | null;
+  } | null>(null);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [remoteSourceUrl, setRemoteSourceUrl] = useState<string | null>(null);
@@ -85,6 +90,25 @@ const App: React.FC = () => {
     return data.rounds.map((r: any, idx: number) => ({ ...r, number: idx - matchStartIndex + 1 }));
   }, [data, matchStartIndex]);
 
+  const voicePlayersForView = useMemo(() => {
+    if (!data?.voice_players || !data?.rounds) return [] as any[];
+
+    const roundNumberMap = new Map<number, number>();
+    data.rounds.forEach((round: any, idx: number) => {
+      roundNumberMap.set(round.number, idx - matchStartIndex + 1);
+    });
+
+    return data.voice_players.map((player: any) => ({
+      ...player,
+      available_rounds: (player.available_rounds || [])
+        .map((roundNum: number) => roundNumberMap.get(roundNum))
+        .filter((roundNum: number | undefined): roundNum is number =>
+          roundNum != null,
+        )
+        .sort((a: number, b: number) => a - b),
+    }));
+  }, [data, matchStartIndex]);
+
   // Current round: return the display number (1-based from detected match start)
   const currentRoundNum = useMemo(() => {
     if (!data || !data.rounds || !data.frames) return 1;
@@ -154,31 +178,62 @@ const App: React.FC = () => {
     const file = (event.target as any).files?.[0];
     if (!file) return;
 
+    const title = "LOCAL DEMO IMPORT";
+    const updateLoadingStatus = (update: ProgressUpdate) => {
+      setLoadingStatus({ title, detail: update.detail, progress: update.progress });
+    };
+
     setLoading(true);
+    setLoadingStatus({
+      title,
+      detail: `Preparing ${file.name}`,
+      progress: 0.04,
+    });
     setError(null);
     setCurrentTick(0);
     setIsPlaying(false);
     setRemoteSourceUrl(null);
 
     try {
-      const result = await parseDemoWithWasm(file);
+      const result = await parseDemoWithWasm(file, updateLoadingStatus);
+      setLoadingStatus({
+        title,
+        detail: "Opening parsed demo",
+        progress: 1,
+      });
       setData({ ...result, file_path: file.name });
     } catch (err: any) {
       setError(err.toString());
       console.error("Error parsing demo:", err);
     } finally {
       setLoading(false);
+      setLoadingStatus(null);
     }
   };
 
   const loadFromArchiveUrl = async (archiveUrl: string) => {
+    const title = "REMOTE DEMO IMPORT";
+    const updateLoadingStatus = (update: ProgressUpdate) => {
+      setLoadingStatus({ title, detail: update.detail, progress: update.progress });
+    };
+
     setLoading(true);
+    setLoadingStatus({
+      title,
+      detail: "Preparing remote archive import",
+      progress: 0.02,
+    });
     setError(null);
     setCurrentTick(0);
     setIsPlaying(false);
 
     try {
-      const result = await loadDemoFromArchiveUrl(archiveUrl);
+      const result = await loadDemoFromArchiveUrl(archiveUrl, updateLoadingStatus);
+      setLoadingStatus({
+        title,
+        detail: "Opening parsed demo",
+        progress: 1,
+      });
       setData({ ...result.parsed, file_path: result.fileName });
       setRemoteSourceUrl(result.sourceUrl || archiveUrl);
     } catch (err: any) {
@@ -186,6 +241,7 @@ const App: React.FC = () => {
       console.error("Error loading remote demo archive:", err);
     } finally {
       setLoading(false);
+      setLoadingStatus(null);
     }
   };
 
@@ -216,6 +272,7 @@ const App: React.FC = () => {
     setChatFilterPlayerId(null);
     setChatFilterPlayerName(null);
     setShowVoicePanel(false);
+    setLoadingStatus(null);
 
     const params = new URLSearchParams(window.location.search);
     if (params.has("demoArchiveUrl")) {
@@ -334,7 +391,7 @@ const App: React.FC = () => {
         {/* Voice Download Panel */}
         {data && showVoicePanel && (
           <VoiceDownloadPanel
-            voicePlayers={data.voice_players || []}
+            voicePlayers={voicePlayersForView}
             rounds={roundsForView}
             onClose={() => setShowVoicePanel(false)}
           />
@@ -533,28 +590,43 @@ const App: React.FC = () => {
                   fontSize: "1.1rem",
                 }}
               >
-                PARSING DEMO
+                {loadingStatus?.title || "PARSING DEMO"}
               </p>
               <div
                 style={{
-                  width: "200px",
-                  height: "2px",
+                  width: "280px",
+                  height: "8px",
                   background: "var(--border-color)",
-                  margin: "10px auto",
+                  margin: "12px auto 8px",
                   position: "relative",
                   overflow: "hidden",
+                  borderRadius: "999px",
                 }}
               >
-                <div
-                  className="progress-shimmer"
-                  style={{
-                    position: "absolute",
-                    width: "100px",
-                    height: "100%",
-                    background: "var(--accent-ct)",
-                    boxShadow: "0 0 15px var(--accent-ct)",
-                  }}
-                ></div>
+                {loadingStatus?.progress != null ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: `${Math.max(6, Math.round(loadingStatus.progress * 100))}%`,
+                      height: "100%",
+                      background:
+                        "linear-gradient(90deg, var(--accent-t), var(--accent-ct))",
+                      boxShadow: "0 0 18px rgba(93, 121, 174, 0.45)",
+                      transition: "width 0.2s ease",
+                    }}
+                  ></div>
+                ) : (
+                  <div
+                    className="progress-shimmer"
+                    style={{
+                      position: "absolute",
+                      width: "120px",
+                      height: "100%",
+                      background: "linear-gradient(90deg, transparent, var(--accent-ct), transparent)",
+                    }}
+                  ></div>
+                )}
               </div>
               <p
                 style={{
@@ -563,7 +635,20 @@ const App: React.FC = () => {
                   fontWeight: 600,
                 }}
               >
-                WORKING...
+                {loadingStatus?.detail || "Working..."}
+              </p>
+              <p
+                style={{
+                  color: "var(--text-secondary)",
+                  fontSize: "0.65rem",
+                  opacity: 0.7,
+                  letterSpacing: "1px",
+                  marginTop: "4px",
+                }}
+              >
+                {loadingStatus?.progress != null
+                  ? `${Math.round(loadingStatus.progress * 100)}% COMPLETE`
+                  : "PROCESSING LARGE DEMO..."}
               </p>
             </div>
           </div>

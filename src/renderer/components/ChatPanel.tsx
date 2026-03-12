@@ -21,6 +21,8 @@ interface ChatPanelProps {
   onClose: () => void;
 }
 
+type ChatScope = "all" | "public" | "team";
+
 const ChatPanel: React.FC<ChatPanelProps> = ({
   chatMessages,
   rounds,
@@ -29,6 +31,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   onClose,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [scope, setScope] = useState<ChatScope>("all");
 
   // Determine which round a tick belongs to
   const getRoundForTick = (tick: number): number => {
@@ -43,11 +46,31 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
     return roundNum;
   };
 
-  // Filter messages by player if a player is selected
-  const filteredMessages = useMemo(() => {
+  const playerMessages = useMemo(() => {
     if (filterPlayerId == null) return chatMessages;
     return chatMessages.filter((m) => m.sender_id === filterPlayerId);
   }, [chatMessages, filterPlayerId]);
+
+  const filteredMessages = useMemo(() => {
+    if (scope === "team") {
+      return playerMessages.filter((message) => message.is_team);
+    }
+
+    if (scope === "public") {
+      return playerMessages.filter((message) => !message.is_team);
+    }
+
+    return playerMessages;
+  }, [playerMessages, scope]);
+
+  const scopeCounts = useMemo(
+    () => ({
+      all: playerMessages.length,
+      public: playerMessages.filter((message) => !message.is_team).length,
+      team: playerMessages.filter((message) => message.is_team).length,
+    }),
+    [playerMessages],
+  );
 
   // Group messages by round
   const messagesByRound = useMemo(() => {
@@ -71,9 +94,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const handleCopy = async () => {
     if (filteredMessages.length === 0) return;
 
+    const scopeLabel =
+      scope === "team"
+        ? "Team chat"
+        : scope === "public"
+          ? "Public chat"
+          : "Full chat";
     const playerLabel = filterPlayerName
-      ? `Chat log for ${filterPlayerName}`
-      : "Full match chat log";
+      ? `${scopeLabel} log for ${filterPlayerName}`
+      : `${scopeLabel} log for full match`;
 
     const lines: string[] = [playerLabel, ""];
 
@@ -143,6 +172,44 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             : "MATCH CHAT"}
         </h4>
         <div style={{ display: "flex", gap: "6px" }}>
+          <div style={{ display: "flex", gap: "4px" }}>
+            <button
+              onClick={() => setScope("all")}
+              className="small-btn"
+              style={{
+                fontSize: "0.55rem",
+                padding: "2px 6px",
+                background: scope === "all" ? "var(--accent-ct)" : "transparent",
+                color: scope === "all" ? "white" : undefined,
+              }}
+            >
+              ALL {scopeCounts.all}
+            </button>
+            <button
+              onClick={() => setScope("public")}
+              className="small-btn"
+              style={{
+                fontSize: "0.55rem",
+                padding: "2px 6px",
+                background: scope === "public" ? "var(--accent-ct)" : "transparent",
+                color: scope === "public" ? "white" : undefined,
+              }}
+            >
+              PUBLIC {scopeCounts.public}
+            </button>
+            <button
+              onClick={() => setScope("team")}
+              className="small-btn"
+              style={{
+                fontSize: "0.55rem",
+                padding: "2px 6px",
+                background: scope === "team" ? "var(--accent-t)" : "transparent",
+                color: scope === "team" ? "white" : undefined,
+              }}
+            >
+              TEAM {scopeCounts.team}
+            </button>
+          </div>
           {filteredMessages.length > 0 && (
             <button
               onClick={handleCopy}
@@ -160,6 +227,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             CLOSE
           </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          padding: "6px 15px",
+          fontSize: "0.58rem",
+          color: "var(--text-secondary)",
+          borderBottom: "1px solid var(--border-color)",
+          letterSpacing: "0.8px",
+        }}
+      >
+        {scope === "team"
+          ? "Showing only team chat messages."
+          : scope === "public"
+            ? "Showing only public chat messages."
+            : "Showing all public and team chat messages."}
       </div>
 
       {/* Messages */}
@@ -182,8 +265,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             }}
           >
             {filterPlayerName
-              ? `No chat messages from ${filterPlayerName}`
-              : "No chat messages in this demo"}
+              ? `No ${scope === "team" ? "team " : scope === "public" ? "public " : ""}chat messages from ${filterPlayerName}`
+              : `No ${scope === "team" ? "team " : scope === "public" ? "public " : ""}chat messages in this demo`}
           </div>
         ) : (
           sortedRoundNumbers.map((roundNum) => (
@@ -213,13 +296,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                     style={{
                       color: msg.is_team
                         ? "var(--accent-t)"
-                        : "var(--text-secondary)",
+                        : "var(--accent-ct)",
                       fontSize: "0.55rem",
                       fontWeight: 700,
                       marginRight: "4px",
                     }}
                   >
-                    {msg.is_team ? "TEAM" : "ALL"}
+                    {msg.is_team ? "TEAM CHAT" : "ALL CHAT"}
                   </span>
                   <span
                     style={{

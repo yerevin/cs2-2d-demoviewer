@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	dem "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs"
 	common "github.com/markus-wa/demoinfocs-golang/v5/pkg/demoinfocs/common"
@@ -106,16 +107,16 @@ type RoundData struct {
 }
 
 type MatchData struct {
-	MapName          string      `json:"map_name"`
-	TickRate         float64     `json:"tick_rate"`          // Frame-based tick rate (original / tickSkip)
-	OriginalTickRate float64     `json:"original_tick_rate"` // Original demo tick rate (64 for CS2)
-	Frames           []FrameData `json:"frames"`
-	Rounds           []RoundData `json:"rounds"`
-	Kills            []KillEvent `json:"kills"`
-	CTScore          int         `json:"ct_score"`         // Final CT Score
-	TScore           int         `json:"t_score"`          // Final T Score
-	MatchStartTick   int         `json:"match_start_tick"` // Tick when match officially started (after knife/restarts)
-	ChatMessages     []ChatMessage   `json:"chat_messages"`
+	MapName          string            `json:"map_name"`
+	TickRate         float64           `json:"tick_rate"`          // Frame-based tick rate (original / tickSkip)
+	OriginalTickRate float64           `json:"original_tick_rate"` // Original demo tick rate (64 for CS2)
+	Frames           []FrameData       `json:"frames"`
+	Rounds           []RoundData       `json:"rounds"`
+	Kills            []KillEvent       `json:"kills"`
+	CTScore          int               `json:"ct_score"`         // Final CT Score
+	TScore           int               `json:"t_score"`          // Final T Score
+	MatchStartTick   int               `json:"match_start_tick"` // Tick when match officially started (after knife/restarts)
+	ChatMessages     []ChatMessage     `json:"chat_messages"`
 	VoicePlayers     []VoicePlayerInfo `json:"voice_players"`
 }
 
@@ -135,10 +136,11 @@ type VoiceSegmentData struct {
 }
 
 type VoicePlayerInfo struct {
-	SteamID  uint64 `json:"steam_id"`
-	Name     string `json:"name"`
-	Segments int    `json:"segments"`
-	Format   string `json:"format"` // "opus" or "steam"
+	SteamID         uint64 `json:"steam_id,string"`
+	Name            string `json:"name"`
+	Segments        int    `json:"segments"`
+	Format          string `json:"format"` // "opus" or "steam"
+	AvailableRounds []int  `json:"available_rounds"`
 }
 
 // Package-level voice data storage (for WASM access after parsing)
@@ -161,6 +163,12 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 	rounds := []RoundData{}
 	killEvents := []KillEvent{}
 	chatMessages := []ChatMessage{}
+	type chatKey struct {
+		tick     int
+		senderID uint64
+		text     string
+	}
+	seenChat := make(map[chatKey]bool)
 
 	ctScore := 0
 	tScore := 0
@@ -187,6 +195,21 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 			playerStats[id] = &Stats{}
 		}
 		return playerStats[id]
+	}
+
+	resolvePlayerByName := func(name string) *common.Player {
+		cleanName := strings.TrimSpace(name)
+		if cleanName == "" {
+			return nil
+		}
+
+		for _, player := range p.GameState().Participants().All() {
+			if player != nil && player.Name == cleanName {
+				return player
+			}
+		}
+
+		return nil
 	}
 
 	p.RegisterEventHandler(func(e events.RoundEnd) {
@@ -303,12 +326,71 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 			senderName = e.Sender.Name
 		}
 
+		tick := p.GameState().IngameTick()
+		key := chatKey{tick: tick, senderID: senderID, text: e.Text}
+		if seenChat[key] {
+			return
+		}
+		seenChat[key] = true
+
 		chatMessages = append(chatMessages, ChatMessage{
-			Tick:       p.GameState().IngameTick(),
+			Tick:       tick,
 			SenderID:   senderID,
 			SenderName: senderName,
 			Text:       e.Text,
-			IsTeam:     e.IsChatAll == false,
+			IsTeam:     !e.IsChatAll,
+		})
+	})
+
+	p.RegisterEventHandler(func(e events.SayText2) {
+		if !e.IsChat || len(e.Params) < 2 {
+			return
+		}
+
+		msgName := strings.TrimPrefix(e.MsgName, "#")
+
+		isTeamChat := false
+		switch {
+		case strings.Contains(msgName, "Chat_All"):
+			isTeamChat = false
+		case strings.Contains(msgName, "Chat_CT") ||
+			strings.Contains(msgName, "Chat_T_") ||
+			strings.HasSuffix(msgName, "Chat_T") ||
+			strings.Contains(msgName, "Chat_Spec"):
+			isTeamChat = true
+		default:
+			isTeamChat = false
+		}
+
+		senderName := strings.TrimSpace(e.Params[0])
+		messageText := strings.TrimSpace(e.Params[1])
+		if messageText == "" {
+			return
+		}
+
+		senderID := uint64(0)
+		if player := resolvePlayerByName(senderName); player != nil {
+			senderID = player.SteamID64
+			senderName = player.Name
+		}
+
+		if senderName == "" {
+			senderName = "Unknown"
+		}
+
+		tick := p.GameState().IngameTick()
+		key := chatKey{tick: tick, senderID: senderID, text: messageText}
+		if seenChat[key] {
+			return
+		}
+		seenChat[key] = true
+
+		chatMessages = append(chatMessages, ChatMessage{
+			Tick:       tick,
+			SenderID:   senderID,
+			SenderName: senderName,
+			Text:       messageText,
+			IsTeam:     isTeamChat,
 		})
 	})
 
@@ -649,6 +731,18 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 	originalTickRate := tickRate
 	frameTickRate := tickRate / float64(tickSkip)
 
+	getRoundForTick := func(tick int) int {
+		roundNum := 0
+		for _, round := range rounds {
+			if tick >= round.Tick {
+				roundNum = round.Number
+				continue
+			}
+			break
+		}
+		return roundNum
+	}
+
 	// Build voice player info for JSON output
 	var voicePlayers []VoicePlayerInfo
 	for steamID, segs := range voiceSegments {
@@ -656,13 +750,34 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 		if name == "" {
 			name = fmt.Sprintf("%d", steamID)
 		}
+
+		roundSet := make(map[int]struct{})
+		for _, seg := range segs {
+			roundNum := getRoundForTick(seg.Tick)
+			if roundNum < 1 {
+				continue
+			}
+			roundSet[roundNum] = struct{}{}
+		}
+
+		availableRounds := make([]int, 0, len(roundSet))
+		for roundNum := range roundSet {
+			availableRounds = append(availableRounds, roundNum)
+		}
+		sort.Ints(availableRounds)
+
 		voicePlayers = append(voicePlayers, VoicePlayerInfo{
-			SteamID:  steamID,
-			Name:     name,
-			Segments: len(segs),
-			Format:   voiceFormat,
+			SteamID:         steamID,
+			Name:            name,
+			Segments:        len(segs),
+			Format:          voiceFormat,
+			AvailableRounds: availableRounds,
 		})
 	}
+
+	sort.Slice(voicePlayers, func(i, j int) bool {
+		return voicePlayers[i].Name < voicePlayers[j].Name
+	})
 
 	// Store voice data globally for WASM extraction
 	StoredVoiceData = voiceSegments

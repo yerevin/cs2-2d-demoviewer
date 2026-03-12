@@ -205,6 +205,14 @@ body {
   border-color: var(--text-primary);
   color: var(--text-primary);
 }
+.small-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.small-btn:disabled:hover {
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
 
 /* Icon-only buttons (delete, compact icons) */
 .icon-btn {

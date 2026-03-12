@@ -1,6 +1,33 @@
 import { gunzipSync, unzipSync } from "fflate";
-import { parseDemoWithWasm } from "./wasmParser";
-import { fetchArchiveViaExtension, isExtensionBridgeAvailable } from "./extensionBridge";
+import { parseDemoWithWasm, type ProgressUpdate } from "./wasmParser";
+import { fetchArchiveViaExtensionWithProgress, isExtensionBridgeAvailable } from "./extensionBridge";
+
+type ProgressCallback = (update: ProgressUpdate) => void;
+
+const reportProgress = (
+  onProgress: ProgressCallback | undefined,
+  detail: string,
+  progress: number | null,
+) => {
+  onProgress?.({ detail, progress });
+};
+
+const scaleProgress = (progress: number, start: number, end: number) =>
+  start + (end - start) * progress;
+
+const createChildProgress = (
+  onProgress: ProgressCallback | undefined,
+  start: number,
+  end: number,
+) => {
+  return (update: ProgressUpdate) => {
+    reportProgress(
+      onProgress,
+      update.detail,
+      update.progress == null ? null : scaleProgress(update.progress, start, end),
+    );
+  };
+};
 
 const isHttpUrl = (value: string) => {
   try {
@@ -104,44 +131,109 @@ const extractDemoFromArchive = (archiveBytes: Uint8Array, archiveFileName: strin
   throw new Error("Unsupported demo archive format (expected .zip, .gz, or .dem)");
 };
 
-const fetchArchiveDirect = async (url: string) => {
+const fetchArchiveDirect = async (
+  url: string,
+  onProgress?: ProgressCallback,
+) => {
   const response = await fetch(url, { method: "GET", redirect: "follow" });
   if (!response.ok) {
     throw new Error(`Download failed (${response.status})`);
   }
 
+  const totalSize = Number(response.headers.get("content-length") || 0);
+  let bytes: Uint8Array;
+
+  if (response.body) {
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value || value.length === 0) {
+        continue;
+      }
+
+      chunks.push(value);
+      received += value.length;
+
+      if (totalSize > 0) {
+        reportProgress(
+          onProgress,
+          `Downloading archive (${Math.round((received / totalSize) * 100)}%)`,
+          scaleProgress(received / totalSize, 0.08, 0.42),
+        );
+      } else {
+        reportProgress(onProgress, "Downloading archive", null);
+      }
+    }
+
+    bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+  } else {
+    reportProgress(onProgress, "Downloading archive", null);
+    bytes = new Uint8Array(await response.arrayBuffer());
+  }
+
   return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
+    bytes,
     resolvedUrl: response.url || url,
     fileName: getFilenameFromUrl(response.url || url),
   };
 };
 
-const downloadArchive = async (url: string) => {
+const downloadArchive = async (
+  url: string,
+  onProgress?: ProgressCallback,
+) => {
   try {
-    return await fetchArchiveDirect(url);
+    return await fetchArchiveDirect(url, onProgress);
   } catch (directError) {
     const bridgeAvailable = await isExtensionBridgeAvailable();
     if (!bridgeAvailable) {
       throw directError;
     }
 
-    return fetchArchiveViaExtension(url);
+    reportProgress(onProgress, "Downloading archive via extension bridge", null);
+    return fetchArchiveViaExtensionWithProgress(url, (received, total) => {
+      if (total > 0) {
+        reportProgress(
+          onProgress,
+          `Downloading archive (${Math.round((received / total) * 100)}%)`,
+          scaleProgress(received / total, 0.08, 0.42),
+        );
+        return;
+      }
+
+      reportProgress(onProgress, "Downloading archive via extension bridge", null);
+    });
   }
 };
 
-export const loadDemoFromArchiveUrl = async (archiveUrl: string) => {
+export const loadDemoFromArchiveUrl = async (
+  archiveUrl: string,
+  onProgress?: ProgressCallback,
+) => {
   if (!isHttpUrl(archiveUrl)) {
     throw new Error("Invalid archive URL");
   }
 
-  const archive = await downloadArchive(archiveUrl);
+  reportProgress(onProgress, "Starting remote demo download", 0.04);
+  const archive = await downloadArchive(archiveUrl, onProgress);
   let archiveBytes = archive.bytes;
   let archiveFileName = archive.fileName || getFilenameFromUrl(archive.resolvedUrl || archiveUrl);
 
   // support .zst (Zstandard compressed payloads)
   if (isZstdBytes(archiveBytes) || /\.zst$/i.test(archiveFileName)) {
     try {
+      reportProgress(onProgress, "Decompressing .zst archive", 0.54);
       const decompressed = await decompressZstd(archiveBytes);
       // @ts-ignore - trust fzstd's return type, which is a Uint8Array
       archiveBytes = decompressed;
@@ -151,11 +243,14 @@ export const loadDemoFromArchiveUrl = async (archiveUrl: string) => {
     }
   }
 
+  reportProgress(onProgress, "Extracting demo from archive", 0.62);
   const { demoBytes, demoName } = extractDemoFromArchive(archiveBytes, archiveFileName);
-      // @ts-ignore - trust fzstd's return type, which is a Uint8Array
+  // @ts-ignore - trust fzstd's return type, which is a Uint8Array
   const file = new File([demoBytes], demoName, { type: "application/octet-stream" });
 
-  const parsed = await parseDemoWithWasm(file);
+  reportProgress(onProgress, "Preparing demo parser", 0.66);
+  const parsed = await parseDemoWithWasm(file, createChildProgress(onProgress, 0.68, 0.97));
+  reportProgress(onProgress, "Finalizing imported demo", 0.99);
 
   return {
     parsed,

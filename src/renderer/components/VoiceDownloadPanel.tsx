@@ -3,10 +3,11 @@ import { exportVoiceOggToMp4 } from "../mediaExport";
 import { extractVoiceOgg } from "../wasmParser";
 
 interface VoicePlayer {
-  steam_id: number;
+  steam_id: string;
   name: string;
   segments: number;
   format: string;
+  available_rounds: number[];
 }
 
 interface RoundData {
@@ -28,9 +29,17 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
   onClose,
 }) => {
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadStatus, setDownloadStatus] = useState<{
+    key: string;
+    label: string;
+    progress: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloadFormat, setDownloadFormat] =
     useState<DownloadFormat>("mp4");
+
+  const allowPaint = () =>
+    new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
   const saveBlob = (blob: Blob, fileName: string) => {
     const url = URL.createObjectURL(blob);
@@ -48,7 +57,17 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
     roundNum: number | null,
   ) => {
     const key = `${player.steam_id}_${roundNum ?? "all"}_${downloadFormat}`;
+    const label =
+      roundNum !== null
+        ? `Round ${roundNum} ${downloadFormat.toUpperCase()}`
+        : `Full match ${downloadFormat.toUpperCase()}`;
+
     setDownloading(key);
+    setDownloadStatus({
+      key,
+      label: `Preparing ${label}`,
+      progress: 0.1,
+    });
     setError(null);
 
     try {
@@ -60,9 +79,16 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
         if (roundIdx >= 0) {
           startTick = rounds[roundIdx].tick;
           endTick =
-            roundIdx + 1 < rounds.length ? rounds[roundIdx + 1].tick : 0;
+            roundIdx + 1 < rounds.length ? rounds[roundIdx + 1].tick - 1 : 0;
         }
       }
+
+      setDownloadStatus({
+        key,
+        label: `Extracting ${label}`,
+        progress: 0.35,
+      });
+      await allowPaint();
 
       const oggData = await extractVoiceOgg(
         player.steam_id,
@@ -74,6 +100,13 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
       const safeName = player.name.replace(/[^a-z0-9-_]+/gi, "_");
 
       if (downloadFormat === "mp4") {
+        setDownloadStatus({
+          key,
+          label: `Encoding ${label}`,
+          progress: 0.72,
+        });
+        await allowPaint();
+
         const subtitle =
           roundNum !== null
             ? `Round ${roundNum} voice chat export`
@@ -83,11 +116,21 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
           player.name,
           subtitle,
         );
+        setDownloadStatus({
+          key,
+          label: `Saving ${label}`,
+          progress: 0.95,
+        });
         saveBlob(
           new Blob([new Uint8Array(mp4Data)], { type: "video/mp4" }),
           `${safeName}_${roundLabel}.mp4`,
         );
       } else {
+        setDownloadStatus({
+          key,
+          label: `Saving ${label}`,
+          progress: 0.92,
+        });
         saveBlob(
           new Blob([new Uint8Array(oggData)], { type: "audio/ogg" }),
           `${safeName}_${roundLabel}.ogg`,
@@ -97,6 +140,7 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
       setError(err?.message || "Download failed");
     } finally {
       setDownloading(null);
+      setDownloadStatus(null);
     }
   };
 
@@ -153,12 +197,6 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
       </div>
     );
   }
-
-  // Get available round numbers
-  const roundNumbers = rounds
-    .map((r) => r.number)
-    .filter((n) => n >= 1);
-
   return (
     <div
       style={{
@@ -202,7 +240,7 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
             }}
           >
             <button
-              onClick={() => setDownloadFormat("ogg")}
+              onClick={() => { setDownloadFormat("ogg"); setError(null); }}
               className="small-btn"
               style={{
                 fontSize: "0.55rem",
@@ -215,7 +253,7 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
               OGG
             </button>
             <button
-              onClick={() => setDownloadFormat("mp4")}
+              onClick={() => { setDownloadFormat("mp4"); setError(null); }}
               className="small-btn"
               style={{
                 fontSize: "0.55rem",
@@ -280,10 +318,11 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
           <VoicePlayerRow
             key={player.steam_id}
             player={player}
-            roundNumbers={roundNumbers}
             downloading={downloading}
+            downloadStatus={downloadStatus}
             downloadFormat={downloadFormat}
             onDownload={downloadVoice}
+            onClearError={() => setError(null)}
           />
         ))}
       </div>
@@ -293,22 +332,31 @@ const VoiceDownloadPanel: React.FC<VoiceDownloadPanelProps> = ({
 
 interface VoicePlayerRowProps {
   player: VoicePlayer;
-  roundNumbers: number[];
   downloading: string | null;
+  downloadStatus: {
+    key: string;
+    label: string;
+    progress: number;
+  } | null;
   downloadFormat: DownloadFormat;
   onDownload: (player: VoicePlayer, roundNum: number | null) => void;
+  onClearError: () => void;
 }
 
 const VoicePlayerRow: React.FC<VoicePlayerRowProps> = ({
   player,
-  roundNumbers,
   downloading,
+  downloadStatus,
   downloadFormat,
   onDownload,
+  onClearError,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const isDownloading = (roundNum: number | null) =>
     downloading === `${player.steam_id}_${roundNum ?? "all"}_${downloadFormat}`;
+  const isExpandedAvailable = player.available_rounds.length > 0;
+  const activeStatus =
+    downloadStatus?.key?.startsWith(`${player.steam_id}_`) ? downloadStatus : null;
 
   return (
     <div
@@ -347,7 +395,7 @@ const VoicePlayerRow: React.FC<VoicePlayerRowProps> = ({
               opacity: 0.6,
             }}
           >
-            {player.segments} segments | {player.format.toUpperCase()}
+            {player.segments} segments | {player.format.toUpperCase()} | {player.available_rounds.length} round exports
           </span>
         </div>
         <div style={{ display: "flex", gap: "4px" }}>
@@ -367,17 +415,60 @@ const VoicePlayerRow: React.FC<VoicePlayerRowProps> = ({
               : `FULL ${downloadFormat.toUpperCase()}`}
           </button>
           <button
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => {
+              setExpanded(!expanded);
+              onClearError();
+            }}
             className="small-btn"
             style={{ fontSize: "0.55rem", padding: "2px 6px" }}
+            disabled={!isExpandedAvailable}
           >
-            {expanded ? "HIDE" : "ROUNDS"}
+            {isExpandedAvailable ? (expanded ? "HIDE" : "ROUNDS") : "MATCH ONLY"}
           </button>
         </div>
       </div>
 
+      {activeStatus && (
+        <div
+          style={{
+            padding: "0 8px 8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.52rem",
+              color: "var(--text-secondary)",
+              letterSpacing: "0.5px",
+            }}
+          >
+            {activeStatus.label}
+          </div>
+          <div
+            style={{
+              width: "100%",
+              height: "4px",
+              borderRadius: "999px",
+              background: "rgba(148, 163, 184, 0.15)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.round(activeStatus.progress * 100)}%`,
+                height: "100%",
+                background: "linear-gradient(90deg, var(--accent-t), var(--accent-ct))",
+                transition: "width 0.2s ease",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Per-round download */}
-      {expanded && (
+      {expanded && player.available_rounds.length > 0 && (
         <div
           style={{
             padding: "4px 8px 6px",
@@ -387,7 +478,7 @@ const VoicePlayerRow: React.FC<VoicePlayerRowProps> = ({
             gap: "3px",
           }}
         >
-          {roundNumbers.map((roundNum) => (
+          {player.available_rounds.map((roundNum) => (
             <button
               key={roundNum}
               onClick={() => onDownload(player, roundNum)}

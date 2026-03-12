@@ -5,11 +5,29 @@ declare global {
       run(instance: WebAssembly.Instance): void;
     };
     parseDemoWasm?: (demoBytes: Uint8Array) => string | { error: string };
-    extractVoiceOgg?: (steamId: number, startTick: number, endTick: number) => Uint8Array | { error: string };
+    extractVoiceOgg?: (steamId: string, startTick: number, endTick: number) => Uint8Array | { error: string };
   }
 }
 
+export interface ProgressUpdate {
+  detail: string;
+  progress: number | null;
+}
+
+type ProgressCallback = (update: ProgressUpdate) => void;
+
 let wasmReadyPromise: Promise<void> | null = null;
+
+const reportProgress = (
+  onProgress: ProgressCallback | undefined,
+  detail: string,
+  progress: number | null,
+) => {
+  onProgress?.({ detail, progress });
+};
+
+const allowPaint = () =>
+  new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 const loadWasmExec = async () => {
   if (window.Go) return;
@@ -24,14 +42,18 @@ const loadWasmExec = async () => {
   });
 };
 
-const loadWasmModule = async () => {
+const loadWasmModule = async (onProgress?: ProgressCallback) => {
   if (!wasmReadyPromise) {
     wasmReadyPromise = (async () => {
+      reportProgress(onProgress, "Loading WASM runtime", 0.12);
       await loadWasmExec();
+
+      reportProgress(onProgress, "Fetching parser module", 0.24);
       const go = new window.Go();
       const response = await fetch("parser/cs2parser.wasm");
       let instance: WebAssembly.Instance;
 
+      reportProgress(onProgress, "Initializing parser module", 0.36);
       if (
         typeof WebAssembly.instantiateStreaming === "function" &&
         response.headers.get("content-type")?.includes("application/wasm")
@@ -47,6 +69,7 @@ const loadWasmModule = async () => {
         instance = result.instance;
       }
 
+      reportProgress(onProgress, "Starting parser runtime", 0.48);
       go.run(instance);
 
       for (let i = 0; i < 100; i++) {
@@ -56,30 +79,42 @@ const loadWasmModule = async () => {
 
       throw new Error("WASM parser did not initialize");
     })();
+  } else {
+    reportProgress(onProgress, "Reusing parser module", 0.48);
   }
 
-  return wasmReadyPromise;
+  await wasmReadyPromise;
+  reportProgress(onProgress, "Reading demo bytes", 0.58);
 };
 
-export const parseDemoWithWasm = async (file: File) => {
-  await loadWasmModule();
+export const parseDemoWithWasm = async (
+  file: File,
+  onProgress?: ProgressCallback,
+) => {
+  await loadWasmModule(onProgress);
 
   if (!window.parseDemoWasm) {
     throw new Error("WASM parser unavailable");
   }
 
+  reportProgress(onProgress, "Reading demo bytes", 0.64);
   const demoBytes = new Uint8Array(await file.arrayBuffer());
+
+  reportProgress(onProgress, "Parsing demo events", 0.78);
+  await allowPaint();
   const result = window.parseDemoWasm(demoBytes);
 
   if (typeof result !== "string") {
     throw new Error(result.error || "Failed to parse demo");
   }
 
+  reportProgress(onProgress, "Building match dataset", 0.94);
+  await allowPaint();
   return JSON.parse(result);
 };
 
 export const extractVoiceOgg = async (
-  steamId: number,
+  steamId: string,
   startTick: number,
   endTick: number,
 ): Promise<Uint8Array> => {

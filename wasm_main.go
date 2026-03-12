@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"strconv"
 	"syscall/js"
 )
 
@@ -32,7 +33,10 @@ func main() {
 			return map[string]any{"error": "usage: extractVoiceOgg(steamId, startTick, endTick)"}
 		}
 
-		steamID := uint64(args[0].Float())
+		steamID, err := strconv.ParseUint(args[0].String(), 10, 64)
+		if err != nil {
+			return map[string]any{"error": "invalid steam ID"}
+		}
 		startTick := int(args[1].Float())
 		endTick := int(args[2].Float())
 

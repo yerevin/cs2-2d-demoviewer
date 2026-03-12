@@ -134,6 +134,13 @@ export const isExtensionBridgeAvailable = async () => {
 };
 
 export const fetchArchiveViaExtension = async (url: string) => {
+  return fetchArchiveViaExtensionWithProgress(url);
+};
+
+export const fetchArchiveViaExtensionWithProgress = async (
+  url: string,
+  onProgress?: (received: number, total: number) => void,
+) => {
   const begin = await postBridgeRequest("FETCH_BEGIN", { url });
 
   const requestId = begin.requestId as string;
@@ -158,6 +165,7 @@ export const fetchArchiveViaExtension = async (url: string) => {
 
       buffer.set(chunkBytes, offset);
       offset += chunkBytes.length;
+      onProgress?.(offset, totalSize);
     }
   } finally {
     try {
