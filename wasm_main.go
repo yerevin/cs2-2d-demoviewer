@@ -45,8 +45,10 @@ func main() {
 			return map[string]any{"error": "no voice data for this player"}
 		}
 
-		// Filter segments by tick range
+		// Collect frames, skipping DTX/silence packets (tiny Opus frames ≤ 2 bytes
+		// that decode to silence/comfort noise) so the export is compact with no gaps.
 		var frames [][]byte
+
 		for _, seg := range segments {
 			if startTick > 0 && seg.Tick < startTick {
 				continue
@@ -56,16 +58,17 @@ func main() {
 			}
 
 			if StoredVoiceFormat == "opus" {
-				frames = append(frames, seg.Data)
+				if len(seg.Data) > 2 {
+					frames = append(frames, seg.Data)
+				}
 			} else if StoredVoiceFormat == "steam" {
-				// For Steam Voice format, extract raw Opus frames from the chunk structure
 				opusFrames := extractOpusFromSteamChunk(seg.Data)
-				frames = append(frames, opusFrames...)
+				for _, frame := range opusFrames {
+					if len(frame) > 2 {
+						frames = append(frames, frame)
+					}
+				}
 			}
-		}
-
-		if len(frames) == 0 {
-			return map[string]any{"error": "no voice frames in the selected range"}
 		}
 
 		oggData := BuildOggOpus(frames, StoredVoiceSampleRate)

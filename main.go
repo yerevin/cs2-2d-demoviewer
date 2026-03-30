@@ -150,6 +150,7 @@ var StoredVoiceFormat string
 var StoredVoiceSampleRate uint32
 var StoredVoicePlayerNames map[uint64]string
 var StoredRounds []RoundData
+var StoredTickRate float64
 
 func ParseDemo(r io.Reader) ([]byte, error) {
 	p := dem.NewParser(r)
@@ -806,6 +807,7 @@ func ParseDemo(r io.Reader) ([]byte, error) {
 	StoredVoiceSampleRate = voiceSampleRate
 	StoredVoicePlayerNames = voicePlayerNames
 	StoredRounds = rounds
+	StoredTickRate = originalTickRate
 
 	matchData := MatchData{
 		MapName:          mapName,
